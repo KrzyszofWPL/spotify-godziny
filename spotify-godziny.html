@@ -201,10 +201,22 @@ document.getElementById('loginBtn').onclick=async()=>{
   const verifier=randStr(64);
   localStorage.setItem('sp_verifier',verifier);
   const challenge=b64url(await sha256(verifier));
-  const scope='user-read-recently-played user-top-read';
-  const url=`https://accounts.spotify.com/authorize?client_id=${encodeURIComponent(id)}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&code_challenge_method=S256&code_challenge=${challenge}`;
+  const scope='user-read-recently-played user-top-read user-read-email user-read-private';
+  const url=`https://accounts.spotify.com/authorize?client_id=${encodeURIComponent(id)}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&code_challenge_method=S256&code_challenge=${challenge}&show_dialog=true`;
   location.href=url;
 };
+
+async function fetchSpotify(url, token){
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  const rawText = await res.text();
+  let data = null;
+  try { data = JSON.parse(rawText); } catch(_) {}
+  if (!res.ok) {
+    const detail = data?.error?.message || data?.error_description || (rawText ? rawText.slice(0, 150) : '') || ('Status ' + res.status);
+    throw new Error(`[HTTP ${res.status}] ${detail}`);
+  }
+  return data || {};
+}
 
 async function handleCallback(){
   const params=new URLSearchParams(location.search);
@@ -235,46 +247,58 @@ async function handleCallback(){
 
 async function loadLiveData(token){
   document.querySelector('.tab[data-tab="live"]').click();
-  const headers={Authorization:'Bearer '+token};
   const res=document.getElementById('liveResults');
   res.classList.remove('hidden');
-  res.innerHTML='<p class="note">Ładuję dane...</p>';
+  res.innerHTML='<p class="note">Ładuję profil i dane...</p>';
+
+  let userProfile = null;
+  let userErr = null;
+  try {
+    userProfile = await fetchSpotify('https://api.spotify.com/v1/me', token);
+  } catch(e) {
+    userErr = e.message;
+  }
 
   // Recently played
   let recentMs=0; const recentArtists=new Map(); let recentErr=null;
   try{
-    const recentRes=await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50',{headers});
-    if(!recentRes.ok){
-      const errBody=await recentRes.json().catch(()=>({}));
-      recentErr='Błąd '+recentRes.status+': '+(errBody?.error?.message||'brak dostępu do historii odtworzeń');
-    } else {
-      const recent=await recentRes.json();
-      (recent.items||[]).forEach(it=>{
-        recentMs+=it.track.duration_ms;
-        it.track.artists.forEach(a=>recentArtists.set(a.name,(recentArtists.get(a.name)||0)+it.track.duration_ms));
-      });
-    }
+    const recent = await fetchSpotify('https://api.spotify.com/v1/me/player/recently-played?limit=50', token);
+    (recent.items||[]).forEach(it=>{
+      recentMs+=it.track.duration_ms;
+      it.track.artists.forEach(a=>recentArtists.set(a.name,(recentArtists.get(a.name)||0)+it.track.duration_ms));
+    });
   }catch(e){ recentErr=e.message; }
 
   // Top artists
   let top={items:[]}; let topErr=null;
   try{
-    const topRes=await fetch('https://api.spotify.com/v1/me/top/artists?time_range=medium_term&limit=15',{headers});
-    if(!topRes.ok){
-      const errBody=await topRes.json().catch(()=>({}));
-      topErr='Błąd '+topRes.status+': '+(errBody?.error?.message||'brak dostępu do top artystów');
-    } else {
-      top=await topRes.json();
-    }
+    top = await fetchSpotify('https://api.spotify.com/v1/me/top/artists?time_range=medium_term&limit=15', token);
   }catch(e){ topErr=e.message; }
 
-  res.innerHTML='';
+  let out = '';
+
+  if (userProfile) {
+    out += `<div class="card" style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:13px;color:var(--muted)">Zalogowane konto Spotify:</div>
+        <div style="font-weight:600;font-size:16px;">${userProfile.display_name || 'Użytkownik'} <span style="font-size:13px;color:var(--lime);font-weight:normal">(${userProfile.email || userProfile.id})</span></div>
+      </div>
+      <button class="ghost" onclick="localStorage.clear();location.reload();" style="padding:6px 14px;font-size:13px;">Wyloguj / Zmień konto</button>
+    </div>`;
+  } else if (userErr) {
+    out += `<div class="err" style="margin-bottom:16px;">⚠️ Profil użytkownika (/me): ${userErr}</div>`;
+  }
 
   if(recentErr){
-    res.innerHTML+=`<div class="err" style="margin-bottom:16px;">⚠️ Ostatnie odtworzenia: ${recentErr}</div>`;
+    out += `<div class="err" style="margin-bottom:16px;">⚠️ Ostatnie odtworzenia: ${recentErr}</div>`;
   } else {
-    res.innerHTML+=`<div class="stat-row"><div class="stat"><b>${fmtH(recentMs)}</b><span>godzin z ostatnich 50 odtworzeń</span></div></div>
+    out += `<div class="stat-row"><div class="stat"><b>${fmtH(recentMs)}</b><span>godzin z ostatnich 50 odtworzeń</span></div></div>
     <p class="note" style="margin-bottom:20px;">Spotify API nie udostępnia pełnej historii — to tylko ostatnie 50 utworów. Po pełne godziny wgraj plik eksportu w zakładce „Import pliku".</p>`;
+  }
+
+  res.innerHTML = out;
+
+  if (!recentErr && recentArtists.size > 0) {
     const box1=document.createElement('div');box1.className='card';box1.style.marginBottom='20px';
     renderTop(box1,'Ostatnie 50 odtworzeń — wg artysty',recentArtists,'h');
     res.appendChild(box1);
