@@ -240,32 +240,56 @@ async function loadLiveData(token){
   res.classList.remove('hidden');
   res.innerHTML='<p class="note">Ładuję dane...</p>';
 
-  const recentRes=await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50',{headers});
-  const recent=await recentRes.json();
-  let recentMs=0; const recentArtists=new Map();
-  (recent.items||[]).forEach(it=>{
-    recentMs+=it.track.duration_ms;
-    it.track.artists.forEach(a=>recentArtists.set(a.name,(recentArtists.get(a.name)||0)+it.track.duration_ms));
-  });
+  // Recently played
+  let recentMs=0; const recentArtists=new Map(); let recentErr=null;
+  try{
+    const recentRes=await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50',{headers});
+    if(!recentRes.ok){
+      const errBody=await recentRes.json().catch(()=>({}));
+      recentErr='Błąd '+recentRes.status+': '+(errBody?.error?.message||'brak dostępu do historii odtworzeń');
+    } else {
+      const recent=await recentRes.json();
+      (recent.items||[]).forEach(it=>{
+        recentMs+=it.track.duration_ms;
+        it.track.artists.forEach(a=>recentArtists.set(a.name,(recentArtists.get(a.name)||0)+it.track.duration_ms));
+      });
+    }
+  }catch(e){ recentErr=e.message; }
 
-  const topRes=await fetch('https://api.spotify.com/v1/me/top/artists?time_range=medium_term&limit=15',{headers});
-  const top=await topRes.json();
+  // Top artists
+  let top={items:[]}; let topErr=null;
+  try{
+    const topRes=await fetch('https://api.spotify.com/v1/me/top/artists?time_range=medium_term&limit=15',{headers});
+    if(!topRes.ok){
+      const errBody=await topRes.json().catch(()=>({}));
+      topErr='Błąd '+topRes.status+': '+(errBody?.error?.message||'brak dostępu do top artystów');
+    } else {
+      top=await topRes.json();
+    }
+  }catch(e){ topErr=e.message; }
 
-  res.innerHTML=`<div class="stat-row">
-    <div class="stat"><b>${fmtH(recentMs)}</b><span>godzin z ostatnich 50 odtworzeń</span></div>
-  </div>
-  <p class="note" style="margin-bottom:20px;">Spotify API nie udostępnia pełnej historii słuchania na żywo — to tylko ostatnie 50 utworów. Po pełne godziny wgraj plik eksportu w zakładce „Import pliku".</p>`;
+  res.innerHTML='';
 
-  const box1=document.createElement('div');box1.className='card';box1.style.marginBottom='20px';
-  renderTop(box1,'Ostatnie 50 odtworzeń — wg artysty',recentArtists,'h');
-  res.appendChild(box1);
+  if(recentErr){
+    res.innerHTML+=`<div class="err" style="margin-bottom:16px;">⚠️ Ostatnie odtworzenia: ${recentErr}</div>`;
+  } else {
+    res.innerHTML+=`<div class="stat-row"><div class="stat"><b>${fmtH(recentMs)}</b><span>godzin z ostatnich 50 odtworzeń</span></div></div>
+    <p class="note" style="margin-bottom:20px;">Spotify API nie udostępnia pełnej historii — to tylko ostatnie 50 utworów. Po pełne godziny wgraj plik eksportu w zakładce „Import pliku".</p>`;
+    const box1=document.createElement('div');box1.className='card';box1.style.marginBottom='20px';
+    renderTop(box1,'Ostatnie 50 odtworzeń — wg artysty',recentArtists,'h');
+    res.appendChild(box1);
+  }
 
   const box2=document.createElement('div');box2.className='card';
-  let html=`<div class="section-title">Top artyści (ostatnie ~6 mies.)</div>`;
-  (top.artists||[]).forEach((a,i)=>{
-    html+=`<div class="barrow"><span class="rank">${i+1}</span><span>${a.name}<div class="track"><div class="fill" style="width:${100-i*6}%"></div></div></span><span class="hrs"></span></div>`;
-  });
-  box2.innerHTML=html+`<p class="note">Ranking Spotify, nie godziny — API tego nie ujawnia.</p>`;
+  if(topErr){
+    box2.innerHTML=`<div class="err">⚠️ Top artyści: ${topErr}</div>`;
+  } else {
+    let html=`<div class="section-title">Top artyści (ostatnie ~6 mies.)</div>`;
+    (top.items||[]).forEach((a,i)=>{
+      html+=`<div class="barrow"><span class="rank">${i+1}</span><span>${a.name}<div class="track"><div class="fill" style="width:${100-i*6}%"></div></div></span><span class="hrs"></span></div>`;
+    });
+    box2.innerHTML=html+`<p class="note">Ranking Spotify, nie godziny — API tego nie ujawnia.</p>`;
+  }
   res.appendChild(box2);
 }
 handleCallback();
