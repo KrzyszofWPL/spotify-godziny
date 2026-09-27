@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ile godzin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#121316; --surface:#1B1D21; --surface2:#222429;
+    --text:#F2F0EB; --muted:#8B8D93; --line:#2C2E33;
+    --lime:#B4F42A; --coral:#FF6B4A;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;line-height:1.5;}
+  .wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px;}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(32px,6vw,48px);margin:0 0 6px;letter-spacing:-0.01em;}
+  .sub{color:var(--muted);margin:0 0 32px;font-size:15px;max-width:52ch;}
+  .bars{display:flex;align-items:flex-end;gap:4px;height:64px;margin-bottom:36px;}
+  .bars i{flex:1;background:var(--lime);border-radius:2px 2px 0 0;transform:scaleY(0);transform-origin:bottom;animation:grow .6s ease forwards;}
+  @keyframes grow{to{transform:scaleY(1);}}
+  .tabs{display:flex;gap:8px;margin-bottom:28px;border-bottom:1px solid var(--line);}
+  .tab{padding:10px 4px;margin-right:20px;color:var(--muted);cursor:pointer;font-weight:600;font-size:14px;border-bottom:2px solid transparent;}
+  .tab.active{color:var(--text);border-color:var(--lime);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px;}
+  .drop{border:1.5px dashed var(--line);border-radius:10px;padding:36px 20px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s;}
+  .drop:hover,.drop.over{border-color:var(--lime);color:var(--text);}
+  input[type=file]{display:none;}
+  button,.btn{background:var(--lime);color:#0E0F11;border:none;border-radius:7px;padding:11px 18px;font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text);}
+  input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:11px 12px;color:var(--text);font-family:inherit;font-size:14px;}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+  .field{margin-bottom:16px;}
+  .stat-row{display:flex;gap:16px;margin:28px 0;flex-wrap:wrap;}
+  .stat{flex:1;min-width:120px;}
+  .stat b{display:block;font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:var(--lime);}
+  .stat span{color:var(--muted);font-size:13px;}
+  .barrow{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;margin-bottom:10px;font-size:14px;}
+  .barrow .rank{color:var(--muted);font-size:12px;}
+  .barrow .track{height:9px;background:var(--surface2);border-radius:5px;overflow:hidden;}
+  .barrow .fill{height:100%;background:var(--coral);}
+  .barrow .hrs{color:var(--muted);font-size:12px;white-space:nowrap;}
+  .section-title{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;margin:0 0 14px;}
+  .note{color:var(--muted);font-size:13px;margin-top:10px;}
+  .err{color:var(--coral);font-size:13px;margin-top:10px;}
+  .hidden{display:none;}
+  select{background:var(--surface2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-family:inherit;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bars" id="bars"></div>
+  <h1>Ile godzin słuchałeś</h1>
+  <p class="sub">Wgraj swoją historię odsłuchań ze Spotify albo zaloguj się, żeby zobaczyć ostatnie odtwarzania i najczęściej słuchanych artystów.</p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="import">Import pliku</div>
+    <div class="tab" data-tab="live">Logowanie Spotify</div>
+  </div>
+
+  <!-- IMPORT TAB -->
+  <div class="panel active" id="panel-import">
+    <div class="card">
+      <div class="drop" id="drop">
+        <div id="dropLabel">Przeciągnij tu pliki JSON z <strong>rozszerzonej historii odtwarzania</strong> (np. Streaming_History_Audio_*.json) albo kliknij, by wybrać</div>
+        <input type="file" id="fileInput" multiple accept=".json">
+      </div>
+      <p class="note">Plik pobierzesz z ustawień Spotify: Konto → Prywatność → „Rozszerzona historia odtwarzania" (dociera mailem, zwykle w ciągu kilku dni). Wszystko liczy się lokalnie w przeglądarce, żadne dane nie są nigdzie wysyłane.</p>
+      <div class="err hidden" id="importErr"></div>
+    </div>
+    <div id="importResults" class="hidden" style="margin-top:28px;"></div>
+  </div>
+
+  <!-- LIVE TAB -->
+  <div class="panel" id="panel-live">
+    <div class="card" id="liveSetup">
+      <div class="field">
+        <label>Client ID Twojej aplikacji Spotify</label>
+        <input type="text" id="clientId" placeholder="np. 8f3a...">
+      </div>
+      <p class="note">Załóż darmową aplikację w <a href="https://developer.spotify.com/dashboard" target="_blank" style="color:var(--lime)">Spotify Developer Dashboard</a> i w jej ustawieniach dodaj Redirect URI dokładnie taki, pod jakim otwierasz tę stronę: <code id="redirUri" style="color:var(--text)"></code>. Uwaga: logowanie zadziała tylko wtedy, gdy ten plik jest hostowany pod adresem https (np. GitHub Pages) — nie zadziała otwarty lokalnie z dysku.</p>
+      <button id="loginBtn" style="margin-top:8px;">Zaloguj się przez Spotify</button>
+      <div class="err hidden" id="liveErr"></div>
+    </div>
+    <div id="liveResults" class="hidden" style="margin-top:28px;"></div>
+  </div>
+</div>
+
+<script>
+// decorative bars
+const barsEl=document.getElementById('bars');
+for(let i=0;i<40;i++){const h=20+Math.random()*44;const b=document.createElement('i');b.style.height=h+'px';b.style.animationDelay=(i*12)+'ms';barsEl.appendChild(b);}
+
+// tabs
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+});
+
+const fmtH=ms=>(ms/3600000).toFixed(1);
+
+function renderTop(container,title,map,unit){
+  const arr=[...map.entries()].sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const max=arr.length?arr[0][1]:1;
+  let html=`<div class="section-title">${title}</div>`;
+  arr.forEach((e,i)=>{
+    const pct=Math.max(4,(e[1]/max*100));
+    html+=`<div class="barrow"><span class="rank">${i+1}</span><span>${e[0]}<div class="track"><div class="fill" style="width:${pct}%"></div></div></span><span class="hrs">${unit==='h'?fmtH(e[1])+' godz.':e[1]}</span></div>`;
+  });
+  container.innerHTML+=html;
+}
+
+// ---- IMPORT TAB ----
+const drop=document.getElementById('drop'), fileInput=document.getElementById('fileInput');
+drop.onclick=()=>fileInput.click();
+['dragover','dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{
+  e.preventDefault();
+  drop.classList.toggle('over',ev==='dragover');
+}));
+drop.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));
+fileInput.onchange=()=>handleFiles(fileInput.files);
+
+async function handleFiles(fileList){
+  const errEl=document.getElementById('importErr');
+  errEl.classList.add('hidden');
+  const files=[...fileList].filter(f=>f.name.endsWith('.json'));
+  if(!files.length){errEl.textContent='Nie widzę plików .json. Wybierz eksport historii odtwarzania.';errEl.classList.remove('hidden');return;}
+  document.getElementById('dropLabel').textContent=`Wczytuję ${files.length} plik(ów)...`;
+  let entries=[];
+  try{
+    for(const f of files){
+      const txt=await f.text();
+      const data=JSON.parse(txt);
+      if(Array.isArray(data)) entries=entries.concat(data);
+    }
+  }catch(e){
+    errEl.textContent='Nie udało się odczytać jednego z plików — upewnij się, że to oryginalne pliki JSON ze Spotify.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if(!entries.length){
+    errEl.textContent='Nie znalazłem żadnych odtworzeń w tych plikach.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  document.getElementById('dropLabel').textContent=`Wczytano ${files.length} plik(ów) · kliknij, by wgrać inne`;
+  processImport(entries);
+}
+
+function processImport(entries){
+  const artistMs=new Map(), trackMs=new Map();
+  let totalMs=0, minTs=null, maxTs=null;
+  for(const e of entries){
+    const artist=e.master_metadata_album_artist_name||e.artistName;
+    const track=e.master_metadata_track_name||e.trackName;
+    const ms=e.ms_played??e.msPlayed??0;
+    const ts=e.ts||e.endTime;
+    if(!artist||!ms) continue;
+    totalMs+=ms;
+    artistMs.set(artist,(artistMs.get(artist)||0)+ms);
+    if(track){const key=`${track} — ${artist}`;trackMs.set(key,(trackMs.get(key)||0)+ms);}
+    if(ts){const d=new Date(ts);if(!isNaN(d)){if(!minTs||d<minTs)minTs=d;if(!maxTs||d>maxTs)maxTs=d;}}
+  }
+  const res=document.getElementById('importResults');
+  res.classList.remove('hidden');
+  const range=minTs&&maxTs?`${minTs.toLocaleDateString('pl-PL')} – ${maxTs.toLocaleDateString('pl-PL')}`:'—';
+  res.innerHTML=`<div class="stat-row">
+    <div class="stat"><b>${fmtH(totalMs)}</b><span>godzin łącznie</span></div>
+    <div class="stat"><b>${artistMs.size}</b><span>artystów</span></div>
+    <div class="stat"><b>${entries.length.toLocaleString('pl-PL')}</b><span>odtworzeń</span></div>
+  </div>
+  <p class="note" style="margin-bottom:24px;">Zakres danych: ${range}</p>`;
+  const artistBox=document.createElement('div');artistBox.className='card';artistBox.style.marginBottom='20px';
+  renderTop(artistBox,'Najwięcej godzin — artyści',artistMs,'h');
+  res.appendChild(artistBox);
+  const trackBox=document.createElement('div');trackBox.className='card';
+  renderTop(trackBox,'Najwięcej godzin — utwory',trackMs,'h');
+  res.appendChild(trackBox);
+}
+
+// ---- LIVE TAB (Spotify OAuth PKCE) ----
+const REDIRECT_URI=location.href.split('?')[0].split('#')[0];
+document.getElementById('redirUri').textContent=REDIRECT_URI;
+document.getElementById('clientId').value=localStorage.getItem('sp_client_id')||'';
+
+function b64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+async function sha256(s){return await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));}
+function randStr(len){const a=new Uint8Array(len);crypto.getRandomValues(a);return b64url(a).slice(0,len);}
+
+document.getElementById('loginBtn').onclick=async()=>{
+  const id=document.getElementById('clientId').value.trim();
+  const errEl=document.getElementById('liveErr');
+  errEl.classList.add('hidden');
+  if(!id){errEl.textContent='Wpisz najpierw Client ID.';errEl.classList.remove('hidden');return;}
+  localStorage.setItem('sp_client_id',id);
+  const verifier=randStr(64);
+  localStorage.setItem('sp_verifier',verifier);
+  const challenge=b64url(await sha256(verifier));
+  const scope='user-read-recently-played user-top-read';
+  const url=`https://accounts.spotify.com/authorize?client_id=${encodeURIComponent(id)}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&code_challenge_method=S256&code_challenge=${challenge}`;
+  location.href=url;
+};
+
+async function handleCallback(){
+  const params=new URLSearchParams(location.search);
+  const code=params.get('code');
+  if(!code) return;
+  history.replaceState({},'',REDIRECT_URI);
+  const id=localStorage.getItem('sp_client_id');
+  const verifier=localStorage.getItem('sp_verifier');
+  const errEl=document.getElementById('liveErr');
+  try{
+    const tokRes=await fetch('https://accounts.spotify.com/api/token',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:REDIRECT_URI,client_id:id,code_verifier:verifier})
+    });
+    const tok=await tokRes.json();
+    if(!tok.access_token) throw new Error(tok.error_description||'brak tokenu');
+    await loadLiveData(tok.access_token);
+  }catch(e){
+    errEl.textContent='Logowanie nie powiodło się: '+e.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+async function loadLiveData(token){
+  document.querySelector('.tab[data-tab="live"]').click();
+  const headers={Authorization:'Bearer '+token};
+  const res=document.getElementById('liveResults');
+  res.classList.remove('hidden');
+  res.innerHTML='<p class="note">Ładuję dane...</p>';
+
+  const recentRes=await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50',{headers});
+  const recent=await recentRes.json();
+  let recentMs=0; const recentArtists=new Map();
+  (recent.items||[]).forEach(it=>{
+    recentMs+=it.track.duration_ms;
+    it.track.artists.forEach(a=>recentArtists.set(a.name,(recentArtists.get(a.name)||0)+it.track.duration_ms));
+  });
+
+  const topRes=await fetch('https://api.spotify.com/v1/me/top/artists?time_range=medium_term&limit=15',{headers});
+  const top=await topRes.json();
+
+  res.innerHTML=`<div class="stat-row">
+    <div class="stat"><b>${fmtH(recentMs)}</b><span>godzin z ostatnich 50 odtworzeń</span></div>
+  </div>
+  <p class="note" style="margin-bottom:20px;">Spotify API nie udostępnia pełnej historii słuchania na żywo — to tylko ostatnie 50 utworów. Po pełne godziny wgraj plik eksportu w zakładce „Import pliku".</p>`;
+
+  const box1=document.createElement('div');box1.className='card';box1.style.marginBottom='20px';
+  renderTop(box1,'Ostatnie 50 odtworzeń — wg artysty',recentArtists,'h');
+  res.appendChild(box1);
+
+  const box2=document.createElement('div');box2.className='card';
+  let html=`<div class="section-title">Top artyści (ostatnie ~6 mies.)</div>`;
+  (top.artists||[]).forEach((a,i)=>{
+    html+=`<div class="barrow"><span class="rank">${i+1}</span><span>${a.name}<div class="track"><div class="fill" style="width:${100-i*6}%"></div></div></span><span class="hrs"></span></div>`;
+  });
+  box2.innerHTML=html+`<p class="note">Ranking Spotify, nie godziny — API tego nie ujawnia.</p>`;
+  res.appendChild(box2);
+}
+handleCallback();
+</script>
+</body>
+</html>
