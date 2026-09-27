@@ -220,8 +220,12 @@ async function handleCallback(){
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:REDIRECT_URI,client_id:id,code_verifier:verifier})
     });
-    const tok=await tokRes.json();
-    if(!tok.access_token) throw new Error(tok.error_description||'brak tokenu');
+    const rawText=await tokRes.text();
+    let tok;
+    try{ tok=JSON.parse(rawText); }
+    catch(_){ throw new Error('Spotify zwróciło nieprawidłową odpowiedź (status '+tokRes.status+'): '+rawText.slice(0,200)); }
+    if(tok.error) throw new Error('Spotify error: '+tok.error+' — '+(tok.error_description||''));
+    if(!tok.access_token) throw new Error('Brak access_token. Odpowiedź: '+JSON.stringify(tok));
     await loadLiveData(tok.access_token);
   }catch(e){
     errEl.textContent='Logowanie nie powiodło się: '+e.message;
